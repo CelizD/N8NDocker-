@@ -1,0 +1,213 @@
+[
+  {
+    "updatedAt": "2026-07-03T05:19:46.000Z",
+    "createdAt": "2026-06-27T16:15:25.290Z",
+    "id": "Ml7cqkqhlHBAbNcq",
+    "name": "Driver Daniel",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $('solicitar-viaje').item.json.body.input }}",
+          "options": {
+            "systemMessage": "Eres un agente parser para una aplicación de taxi.\n\nTu tarea es leer la solicitud del usuario y extraer estos datos:\n\n- nombre\n- origen\n- destino\n- tipoPago\n\nDevuelve únicamente JSON válido, sin explicaciones, sin markdown y sin texto adicional.\n\nFormato obligatorio:\n\n{\n  \"nombre\": \"\",\n  \"origen\": \"\",\n  \"destino\": \"\",\n  \"tipoPago\": \"\"\n}\n\nReglas:\n- Si el usuario dice \"soy Mike\", entonces el nombre es \"Mike\".\n- Si dice \"desde X hasta Y\", entonces X es el origen y Y es el destino.\n- Si menciona efectivo, tarjeta o transferencia, guárdalo en tipoPago.\n- Si falta algún dato, coloca \"No especificado\"."
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          112,
+          -144
+        ],
+        "id": "24fc8bb5-46b8-423a-a363-de63a475fc8f",
+        "name": "AI Agent"
+      },
+      {
+        "parameters": {
+          "sessionIdType": "customKey",
+          "sessionKey": "={{ $('solicitar-viaje').item.json.body.sessionId }}",
+          "contextWindowLength": 100
+        },
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.4,
+        "position": [
+          256,
+          80
+        ],
+        "id": "9c39134c-4320-4a86-a457-666b1c695646",
+        "name": "Simple Memory"
+      },
+      {
+        "parameters": {
+          "respondWith": "allIncomingItems",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          688,
+          -144
+        ],
+        "id": "5428fb4a-c616-4bf0-8bd0-da360afe2aaa",
+        "name": "Respond to Webhook"
+      },
+      {
+        "parameters": {
+          "model": "groq/compound-mini",
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+        "typeVersion": 1,
+        "position": [
+          128,
+          80
+        ],
+        "id": "115279ae-fbac-4a09-84db-c5fcd6d2d23c",
+        "name": "Groq Chat Model",
+        "notesInFlow": false,
+        "credentials": {
+          "groqApi": {
+            "id": "glBizGl5GawdDCdx",
+            "name": "Groq account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const item = $input.first().json;\n\n// La salida del AI Agent normalmente viene en item.output\nlet aiOutput = item.output || item.text || item.response || \"\";\n\nlet datosViaje = {\n  nombre: \"No especificado\",\n  origen: \"No especificado\",\n  destino: \"No especificado\",\n  tipoPago: \"No especificado\"\n};\n\ntry {\n  if (typeof aiOutput === \"string\") {\n    aiOutput = aiOutput\n      .replace(/```json/g, \"\")\n      .replace(/```/g, \"\")\n      .trim();\n\n    const jsonMatch = aiOutput.match(/\\{[\\s\\S]*\\}/);\n\n    if (jsonMatch) {\n      datosViaje = JSON.parse(jsonMatch[0]);\n    }\n  } else if (typeof aiOutput === \"object\") {\n    datosViaje = aiOutput;\n  }\n} catch (error) {\n  datosViaje = {\n    nombre: \"No especificado\",\n    origen: \"No especificado\",\n    destino: \"No especificado\",\n    tipoPago: \"No especificado\"\n  };\n}\n\nconst camposRequeridos = {\n  pasajero: datosViaje.nombre,\n  origen: datosViaje.origen,\n  destino: datosViaje.destino,\n  tipoPago: datosViaje.tipoPago\n};\n\nconst faltantes = Object.entries(camposRequeridos)\n  .filter(([, valor]) =>\n    typeof valor !== \"string\" ||\n    !valor.trim() ||\n    valor.trim().toLowerCase() === \"no especificado\"\n  )\n  .map(([campo]) => campo);\n\nif (faltantes.length > 0) {\n  return [\n    {\n      json: {\n        success: false,\n        mensaje: \"Faltan datos para solicitar el viaje: \" + faltantes.join(\", \") + \".\"\n      }\n    }\n  ];\n}\n\nconst conductores = [\n  {\n    nombre: \"Carlos Ramírez\",\n    auto: \"Nissan Versa 2020\",\n    placas: \"ABC-123-A\",\n    distanciaKm: 1.4,\n    tiempoMin: 5\n  },\n  {\n    nombre: \"Luis Hernández\",\n    auto: \"Toyota Corolla 2021\",\n    placas: \"XYZ-789-B\",\n    distanciaKm: 2.8,\n    tiempoMin: 9\n  },\n  {\n    nombre: \"Miguel Torres\",\n    auto: \"Kia Rio 2019\",\n    placas: \"JKL-456-C\",\n    distanciaKm: 0.9,\n    tiempoMin: 3\n  },\n  {\n    nombre: \"Ana López\",\n    auto: \"Hyundai Elantra 2020\",\n    placas: \"MNO-321-D\",\n    distanciaKm: 3.2,\n    tiempoMin: 11\n  }\n];\n\nconductores.sort((a, b) => a.distanciaKm - b.distanciaKm);\n\nconst conductorAsignado = conductores[0];\n\nreturn [\n  {\n    json: {\n      success: true,\n      mensaje: \"Viaje despachado correctamente\",\n      pasajero: datosViaje.nombre || \"No especificado\",\n      origen: datosViaje.origen || \"No especificado\",\n      destino: datosViaje.destino || \"No especificado\",\n      tipoPago: datosViaje.tipoPago || \"No especificado\",\n      conductorAsignado: {\n        nombre: conductorAsignado.nombre,\n        auto: conductorAsignado.auto,\n        placas: conductorAsignado.placas\n      },\n      distanciaKm: conductorAsignado.distanciaKm,\n      tiempoEstimadoLlegadaMin: conductorAsignado.tiempoMin\n    }\n  }\n];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          464,
+          -144
+        ],
+        "id": "7d51f35b-a4cf-4e1a-8934-2abb970ab904",
+        "name": "Buscador de Conductores"
+      },
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "solicitar-viaje",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          -112,
+          -144
+        ],
+        "id": "200208da-12b8-4bd3-b1a5-212ff920cc30",
+        "name": "solicitar-viaje",
+        "webhookId": "845f8be5-caff-492d-ad91-0a48becdccad"
+      }
+    ],
+    "connections": {
+      "AI Agent": {
+        "main": [
+          [
+            {
+              "node": "Buscador de Conductores",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Simple Memory": {
+        "ai_memory": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Groq Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Respond to Webhook": {
+        "main": [
+          []
+        ]
+      },
+      "Buscador de Conductores": {
+        "main": [
+          [
+            {
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "solicitar-viaje": {
+        "main": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false
+    },
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "a32ebce4-83db-46c5-bd44-6af3fec7d60b",
+    "activeVersionId": "a32ebce4-83db-46c5-bd44-6af3fec7d60b",
+    "versionCounter": 65,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-06-27T16:15:25.295Z",
+        "createdAt": "2026-06-27T16:15:25.295Z",
+        "role": "workflow:owner",
+        "workflowId": "Ml7cqkqhlHBAbNcq",
+        "projectId": "V017LRbvupHjHS5q",
+        "project": {
+          "updatedAt": "2026-06-27T15:53:35.347Z",
+          "createdAt": "2026-06-27T15:48:53.520Z",
+          "id": "V017LRbvupHjHS5q",
+          "name": "Daniel Celiz Martinez <mxdcm82@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "12a78596-878f-419d-bd88-619c6b68986c"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": "Version 229b57c3",
+      "description": ""
+    }
+  }
+]

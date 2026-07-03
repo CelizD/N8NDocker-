@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,7 @@ import {
 } from "react-native";
 
 type Viaje = {
-  success: boolean;
+  success: true;
   mensaje: string;
   pasajero: string;
   origen: string;
@@ -28,21 +28,93 @@ type Viaje = {
   tiempoEstimadoLlegadaMin: number;
 };
 
+const WEBHOOK_URL = process.env.EXPO_PUBLIC_N8N_WEBHOOK_URL?.trim();
+const REQUEST_TIMEOUT_MS = 30_000;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const parseViaje = (payload: unknown): Viaje => {
+  const value = Array.isArray(payload) ? payload[0] : payload;
+
+  if (!isRecord(value)) {
+    throw new Error("n8n devolvió una respuesta vacía o inválida.");
+  }
+
+  if (value.success === false) {
+    throw new Error(
+      isNonEmptyString(value.mensaje)
+        ? value.mensaje
+        : "n8n no pudo procesar la solicitud."
+    );
+  }
+
+  const conductor = value.conductorAsignado;
+  const isValidConductor =
+    isRecord(conductor) &&
+    isNonEmptyString(conductor.nombre) &&
+    isNonEmptyString(conductor.auto) &&
+    isNonEmptyString(conductor.placas);
+
+  const isValidViaje =
+    value.success === true &&
+    isNonEmptyString(value.mensaje) &&
+    isNonEmptyString(value.pasajero) &&
+    isNonEmptyString(value.origen) &&
+    isNonEmptyString(value.destino) &&
+    isNonEmptyString(value.tipoPago) &&
+    typeof value.distanciaKm === "number" &&
+    Number.isFinite(value.distanciaKm) &&
+    typeof value.tiempoEstimadoLlegadaMin === "number" &&
+    Number.isFinite(value.tiempoEstimadoLlegadaMin) &&
+    isValidConductor;
+
+  if (!isValidViaje) {
+    throw new Error("La respuesta de n8n no tiene el formato esperado.");
+  }
+
+  return value as Viaje;
+};
+
 export default function HomeScreen() {
   const [input, setInput] = useState(
     "Hola soy Mike, necesito un taxi desde Plaza Río hasta CESUN Universidad y voy a pagar en efectivo"
   );
   const [loading, setLoading] = useState(false);
   const [viaje, setViaje] = useState<Viaje | null>(null);
+  const sessionId = useRef(
+    `usuario_${Date.now()}_${Math.random().toString(36).slice(2)}`
+  );
+  const requestController = useRef<AbortController | null>(null);
+  const isMounted = useRef(true);
 
-  const WEBHOOK_URL =
-  "http://192.168.1.74:5678/webhook/845f8be5-caff-492d-ad91-0a48becdccad";
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+      requestController.current?.abort();
+    };
+  }, []);
 
   const solicitarViaje = async () => {
     if (!input.trim()) {
       Alert.alert("Campo requerido", "Escribe una solicitud de viaje.");
       return;
     }
+
+    if (!WEBHOOK_URL) {
+      Alert.alert(
+        "Configuración requerida",
+        "Define EXPO_PUBLIC_N8N_WEBHOOK_URL en app-mobile/.env.local."
+      );
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    requestController.current = controller;
 
     try {
       setLoading(true);
@@ -54,26 +126,51 @@ export default function HomeScreen() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          input,
-          sessionId: "usuario_app_001",
+          input: input.trim(),
+          sessionId: sessionId.current,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
-        throw new Error("Error en la respuesta del servidor");
+        const errorPayload: unknown = await response.json().catch(() => null);
+        const errorMessage =
+          isRecord(errorPayload) && isNonEmptyString(errorPayload.message)
+            ? errorPayload.message
+            : `n8n respondió con HTTP ${response.status}.`;
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
-      const resultado = Array.isArray(data) ? data[0] : data;
-      setViaje(resultado);
+      const data: unknown = await response.json().catch(() => {
+        throw new Error("n8n no devolvió JSON válido.");
+      });
+
+      setViaje(parseViaje(data));
     } catch (error) {
-      console.log(error);
+      if (!isMounted.current) {
+        return;
+      }
+
+      const message =
+        error instanceof Error && error.name === "AbortError"
+          ? "La solicitud tardó más de 30 segundos. Inténtalo de nuevo."
+          : error instanceof Error
+            ? error.message
+            : "No se pudo conectar con n8n.";
+
+      console.error(error);
       Alert.alert(
         "Error de conexión",
-        "No se pudo conectar con n8n. Revisa la IP, el puerto 5678 y que el workflow esté activo."
+        `${message}\n\nRevisa la red y que el workflow esté activo.`
       );
     } finally {
-      setLoading(false);
+      clearTimeout(timeoutId);
+      if (requestController.current === controller) {
+        requestController.current = null;
+      }
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   };
 
