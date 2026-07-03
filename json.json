@@ -1,0 +1,148 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -368,
+        -64
+      ],
+      "id": "75f37db7-d1eb-482a-9fe2-fa2cd832d73a",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Vas a generar una plantilla con un mensaje de buenos dias, para comenzar estoicamente el day, quiero que agrgeues una meditacion de marco aurelio y plantilla cool. Cuando esté lista, usa la herramienta de correo para enviarla.\n\nenvialo al correo mxdcm82@gmail.com, dcm82yt2005@gmail.com, daniel.celizmartinez@cesunbc.edu.mx\n\nusa la tool de envio de correo",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        208,
+        -32
+      ],
+      "id": "46a3124f-6332-47e6-94f4-dcbec97a5bd1",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "=customKey",
+        "sessionKey": "sesion_estoica_diaria",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        256,
+        272
+      ],
+      "id": "aed9ec65-eb6a-4d3a-944c-892738bc5cb7",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-safeguard-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        224
+      ],
+      "id": "dd6a4d64-2dfe-471d-84b0-017571859c87",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "glBizGl5GawdDCdx",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "mxdcm82@gmail.com",
+        "toEmail": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('To_Email', ``, 'string') }}",
+        "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Subject', ``, 'string') }}",
+        "html": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('HTML', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSendTool",
+      "typeVersion": 2.1,
+      "position": [
+        480,
+        272
+      ],
+      "id": "c9461e62-647a-4304-a928-7237d336d9b4",
+      "name": "Send an Email in Send Email1",
+      "webhookId": "a7a8b995-a857-4cd7-8dcd-f172e3109361",
+      "credentials": {
+        "smtp": {
+          "id": "Z5fEbYp6BiXyWX2Q",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an Email in Send Email1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5a29f2d33de84ffce3891effb26a372cffc338ed34182919422a016a144f7eab"
+  }
+}
